@@ -6,6 +6,7 @@ import './index.css';
 import { CartProvider } from './contexts/CartContext';
 import { AuthProvider } from './contexts/AuthContext';
 import { CandidatureProvider } from './contexts/CandidatureContext';
+import { OrganizationProvider } from './contexts/OrganizationContext';
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
@@ -13,7 +14,9 @@ createRoot(document.getElementById('root')!).render(
       <AuthProvider>
         <CartProvider>
           <CandidatureProvider>
-            <App />
+            <OrganizationProvider>
+              <App />
+            </OrganizationProvider>
           </CandidatureProvider>
         </CartProvider>
       </AuthProvider>
