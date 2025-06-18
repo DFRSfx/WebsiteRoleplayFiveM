@@ -1,0 +1,83 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --primary: #8B0000;
+  --primary-dark: #5D0000;
+  --primary-light: #BE0000;
+  --background: #121212;
+  --surface: #1E1E1E;
+  --text-primary: #FFFFFF;
+  --text-secondary: #AAAAAA;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: 'Inter', sans-serif;
+  @apply bg-gray-900 text-white;
+}
+
+.btn {
+  @apply px-4 py-2 rounded-md transition-all duration-200 font-medium;
+}
+
+.btn-primary {
+  @apply bg-red-800 hover:bg-red-700 text-white;
+}
+
+.btn-secondary {
+  @apply bg-gray-800 hover:bg-gray-700 text-white;
+}
+
+.btn-outline {
+  @apply border border-red-800 text-red-800 hover:bg-red-800 hover:text-white;
+}
+
+.card {
+  @apply bg-gray-800 rounded-lg overflow-hidden shadow-lg transition-transform duration-300 hover:shadow-xl;
+}
+
+.input {
+  @apply bg-gray-800 border border-gray-700 rounded-md px-4 py-2 text-white w-full focus:outline-none focus:ring-2 focus:ring-red-800;
+}
+
+.container-custom {
+  @apply max-w-7xl mx-auto px-4 sm:px-6 lg:px-8;
+}
+
+/* Animations */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.animate-fadeIn {
+  animation: fadeIn 0.5s ease-in-out;
+}
+
+.modal-backdrop {
+  @apply fixed inset-0 bg-black bg-opacity-75 backdrop-blur-sm z-40 animate-fadeIn;
+}
+
+.modal-content {
+  @apply fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-gray-800 rounded-lg shadow-xl z-50 w-full max-w-md animate-fadeIn;
+}
+
+/* Nav animation */
+.nav-link {
+  @apply relative overflow-hidden;
+}
+
+.nav-link::after {
+  content: '';
+  @apply absolute bottom-0 left-0 w-0 h-0.5 bg-red-800 transition-all duration-300;
+}
+
+.nav-link:hover::after,
+.nav-link.active::after {
+  @apply w-full;
+}
