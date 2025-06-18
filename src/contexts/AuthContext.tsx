@@ -1,283 +1,220 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { api } from './AuthContext';
+import axios from 'axios';
 
-export interface Organization {
-  id: string;
-  nome: string;
-  slug: string;
-  descricao: string;
-  corHex: string;
-  icone: string;
-  requisitos: string[];
-  beneficios: string[];
-  aceitaCandidaturas: boolean;
-  ativo: boolean;
-  chefeId?: string;
-  chefeUsername?: string;
-  createdAt: Date;
-}
+// Configuração do Axios
+export const api = axios.create({
+  baseURL: process.env.REACT_APP_API_URL || 'http://localhost:3001',
+  timeout: 10000,
+  headers: {
+    'Content-Type': 'application/json',
+  },
+});
 
-export interface OrganizationApplication {
+// Interceptor para adicionar token automaticamente
+api.interceptors.request.use(
+  (config) => {
+    const token = localStorage.getItem('enigma_token');
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
+  },
+  (error) => Promise.reject(error)
+);
+
+// Interceptor para lidar com respostas de erro
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      localStorage.removeItem('enigma_token');
+      localStorage.removeItem('enigma_user');
+      window.location.href = '/entrar';
+    }
+    return Promise.reject(error);
+  }
+);
+
+export interface User {
   id: string;
-  organizacaoId: string;
-  organizationName?: string;
-  organizationColor?: string;
-  nomePersonagem: string;
-  nomeJogador: string;
+  username: string;
   email: string;
-  discordUsername: string;
-  idadePersonagem: number;
-  horasJogadas: number;
-  experienciaPrevia?: string;
-  motivacao: string;
-  disponibilidade?: string;
-  informacaoAdicional?: string;
-  estado: 'pendente' | 'aprovada' | 'rejeitada' | 'em_analise';
-  notasAdmin?: string;
-  avaliadoPor?: string;
-  avaliadoPorUsername?: string;
-  dataAvaliacao?: Date;
-  createdAt: Date;
+  role: 'user' | 'chefe_organizacao' | 'moderator' | 'admin';
+  lastLogin?: string;
+  organizationId?: string;
 }
 
-interface OrganizationContextType {
-  organizations: Organization[];
-  applications: OrganizationApplication[];
+interface AuthContextType {
+  isLoggedIn: boolean;
+  user: User | null;
   loading: boolean;
-  loadingApplications: boolean;
-  addOrganization: (org: Omit<Organization, 'id' | 'createdAt'>) => Promise<boolean>;
-  updateOrganization: (id: string, updates: Partial<Organization>) => Promise<boolean>;
-  deleteOrganization: (id: string) => Promise<boolean>;
-  addApplication: (app: Omit<OrganizationApplication, 'id' | 'createdAt'>) => Promise<boolean>;
-  updateApplicationStatus: (id: string, estado: string, notas?: string) => Promise<boolean>;
-  getOrganizationBySlug: (slug: string) => Organization | undefined;
-  getApplicationsByOrganization: (orgId: string) => OrganizationApplication[];
-  refreshOrganizations: () => Promise<void>;
-  refreshApplications: () => Promise<void>;
+  login: (email: string, password: string, remember?: boolean) => Promise<boolean>;
+  logout: () => void;
+  register: (username: string, email: string, password: string) => Promise<boolean>;
+  hasRole: (role: string) => boolean;
+  isAdmin: () => boolean;
+  isModerator: () => boolean;
+  updateUser: (userData: Partial<User>) => void;
 }
 
-const OrganizationContext = createContext<OrganizationContextType | undefined>(undefined);
+const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-export const useOrganizations = () => {
-  const context = useContext(OrganizationContext);
+export const useAuth = () => {
+  const context = useContext(AuthContext);
   if (!context) {
-    throw new Error('useOrganizations deve ser usado dentro de OrganizationProvider');
+    throw new Error('useAuth deve ser usado dentro de AuthProvider');
   }
   return context;
 };
 
-export const OrganizationProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [organizations, setOrganizations] = useState<Organization[]>([]);
-  const [applications, setApplications] = useState<OrganizationApplication[]>([]);
+export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
-  const [loadingApplications, setLoadingApplications] = useState(true);
 
-  // Buscar organizações
-  const fetchOrganizations = async () => {
-    try {
-      setLoading(true);
-      const response = await api.get('/api/organizations');
-
-      // Transformar os dados para o formato esperado pelo frontend
-      const transformedOrgs = response.data.map((org: any) => ({
-        ...org,
-        corHex: org.cor_hex,
-        aceitaCandidaturas: org.aceita_candidaturas,
-        chefeUsername: org.chefe_username,
-        createdAt: new Date(org.created_at)
-      }));
-
-      setOrganizations(transformedOrgs);
-    } catch (error) {
-      console.error('Erro ao buscar organizações:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Buscar candidaturas
-  const fetchApplications = async () => {
-    try {
-      setLoadingApplications(true);
-      const response = await api.get('/api/applications');
-
-      // Transformar os dados para o formato esperado pelo frontend
-      const transformedApps = response.data.map((app: any) => ({
-        ...app,
-        organizacaoId: app.organization_id.toString(),
-        organizationName: app.organization_name,
-        organizationColor: app.cor_hex,
-        nomePersonagem: app.nome_personagem,
-        nomeJogador: app.nome_jogador,
-        discordUsername: app.discord_username,
-        idadePersonagem: app.idade_personagem,
-        horasJogadas: app.horas_jogadas,
-        experienciaPrevia: app.experiencia_previa,
-        informacaoAdicional: app.informacao_adicional,
-        notasAdmin: app.notas_admin,
-        avaliadoPor: app.avaliado_por?.toString(),
-        avaliadoPorUsername: app.avaliado_por_username,
-        dataAvaliacao: app.data_avaliacao ? new Date(app.data_avaliacao) : undefined,
-        createdAt: new Date(app.created_at)
-      }));
-
-      setApplications(transformedApps);
-    } catch (error) {
-      console.error('Erro ao buscar candidaturas:', error);
-    } finally {
-      setLoadingApplications(false);
-    }
-  };
-
-  // Carregar dados iniciais
+  // Verificar se utilizador está logado ao carregar
   useEffect(() => {
-    fetchOrganizations();
-    fetchApplications();
+    const checkAuthStatus = async () => {
+      try {
+        const token = localStorage.getItem('enigma_token');
+        const savedUser = localStorage.getItem('enigma_user');
+
+        if (token && savedUser) {
+          const userData = JSON.parse(savedUser);
+
+          // Verificar se o token ainda é válido
+          try {
+            const response = await api.get('/api/auth/verify');
+            if (response.data.valid) {
+              setUser(userData);
+              setIsLoggedIn(true);
+            } else {
+              // Token inválido, remover dados
+              localStorage.removeItem('enigma_token');
+              localStorage.removeItem('enigma_user');
+            }
+          } catch (error) {
+            // Erro na verificação, assumir que está logado se temos os dados
+            setUser(userData);
+            setIsLoggedIn(true);
+          }
+        }
+      } catch (error) {
+        console.error('Erro ao verificar status de autenticação:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    checkAuthStatus();
   }, []);
 
-  const addOrganization = async (orgData: Omit<Organization, 'id' | 'createdAt'>): Promise<boolean> => {
+  const login = async (email: string, password: string, remember = false): Promise<boolean> => {
     try {
-      const response = await api.post('/api/admin/organizations', {
-        nome: orgData.nome,
-        descricao: orgData.descricao,
-        cor_hex: orgData.corHex,
-        icone: orgData.icone,
-        requisitos: orgData.requisitos,
-        beneficios: orgData.beneficios,
-        aceita_candidaturas: orgData.aceitaCandidaturas,
-        ativo: orgData.ativo
+      const response = await api.post('/api/auth/login', {
+        email,
+        password,
+        remember
       });
 
       if (response.data.success) {
-        await fetchOrganizations();
+        const { token, user: userData } = response.data;
+
+        // Guardar token e dados do utilizador
+        localStorage.setItem('enigma_token', token);
+        localStorage.setItem('enigma_user', JSON.stringify(userData));
+
+        setUser(userData);
+        setIsLoggedIn(true);
+
         return true;
       }
+
       return false;
     } catch (error: any) {
-      console.error('Erro ao criar organização:', error);
-      throw new Error(error.response?.data?.error || 'Erro ao criar organização');
+      console.error('Erro no login:', error);
+
+      // Re-throw para que o componente possa lidar com o erro
+      throw error;
     }
   };
 
-  const updateOrganization = async (id: string, updates: Partial<Organization>): Promise<boolean> => {
+  const register = async (username: string, email: string, password: string): Promise<boolean> => {
     try {
-      const response = await api.patch(`/api/admin/organizations/${id}`, {
-        nome: updates.nome,
-        descricao: updates.descricao,
-        cor_hex: updates.corHex,
-        icone: updates.icone,
-        requisitos: updates.requisitos,
-        beneficios: updates.beneficios,
-        aceita_candidaturas: updates.aceitaCandidaturas,
-        ativo: updates.ativo
+      const response = await api.post('/api/auth/register', {
+        username,
+        email,
+        password
       });
 
-      if (response.data.success) {
-        await fetchOrganizations();
-        return true;
-      }
-      return false;
+      return response.data.success;
     } catch (error: any) {
-      console.error('Erro ao atualizar organização:', error);
-      throw new Error(error.response?.data?.error || 'Erro ao atualizar organização');
+      console.error('Erro no registo:', error);
+      throw error;
     }
   };
 
-  const deleteOrganization = async (id: string): Promise<boolean> => {
-    try {
-      const response = await api.delete(`/api/admin/organizations/${id}`);
+  const logout = () => {
+    // Remover dados do localStorage
+    localStorage.removeItem('enigma_token');
+    localStorage.removeItem('enigma_user');
 
-      if (response.data.success) {
-        await fetchOrganizations();
-        await fetchApplications(); // Atualizar candidaturas também
-        return true;
-      }
-      return false;
-    } catch (error: any) {
-      console.error('Erro ao eliminar organização:', error);
-      throw new Error(error.response?.data?.error || 'Erro ao eliminar organização');
+    // Limpar estado
+    setUser(null);
+    setIsLoggedIn(false);
+
+    // Redirecionar para página inicial
+    window.location.href = '/';
+  };
+
+  const hasRole = (role: string): boolean => {
+    if (!user) return false;
+
+    const roleHierarchy = {
+      'user': 1,
+      'chefe_organizacao': 2,
+      'moderator': 3,
+      'admin': 4
+    };
+
+    const userRoleLevel = roleHierarchy[user.role as keyof typeof roleHierarchy] || 0;
+    const requiredRoleLevel = roleHierarchy[role as keyof typeof roleHierarchy] || 0;
+
+    return userRoleLevel >= requiredRoleLevel;
+  };
+
+  const isAdmin = (): boolean => {
+    return user?.role === 'admin';
+  };
+
+  const isModerator = (): boolean => {
+    return hasRole('moderator');
+  };
+
+  const updateUser = (userData: Partial<User>) => {
+    if (user) {
+      const updatedUser = { ...user, ...userData };
+      setUser(updatedUser);
+      localStorage.setItem('enigma_user', JSON.stringify(updatedUser));
     }
-  };
-
-  const addApplication = async (appData: Omit<OrganizationApplication, 'id' | 'createdAt'>): Promise<boolean> => {
-    try {
-      const response = await api.post(`/api/organizations/${appData.organizacaoId}/apply`, {
-        nome_personagem: appData.nomePersonagem,
-        nome_jogador: appData.nomeJogador,
-        email: appData.email,
-        discord_username: appData.discordUsername,
-        idade_personagem: appData.idadePersonagem,
-        horas_jogadas: appData.horasJogadas,
-        experiencia_previa: appData.experienciaPrevia,
-        motivacao: appData.motivacao,
-        disponibilidade: appData.disponibilidade,
-        informacao_adicional: appData.informacaoAdicional
-      });
-
-      if (response.data.success) {
-        await fetchApplications();
-        return true;
-      }
-      return false;
-    } catch (error: any) {
-      console.error('Erro ao submeter candidatura:', error);
-      throw new Error(error.response?.data?.error || 'Erro ao submeter candidatura');
-    }
-  };
-
-  const updateApplicationStatus = async (id: string, estado: string, notas?: string): Promise<boolean> => {
-    try {
-      const response = await api.patch(`/api/applications/${id}/status`, {
-        estado,
-        notas_admin: notas
-      });
-
-      if (response.data.success) {
-        await fetchApplications();
-        return true;
-      }
-      return false;
-    } catch (error: any) {
-      console.error('Erro ao atualizar candidatura:', error);
-      throw new Error(error.response?.data?.error || 'Erro ao atualizar candidatura');
-    }
-  };
-
-  const getOrganizationBySlug = (slug: string): Organization | undefined => {
-    return organizations.find(org => org.slug === slug && org.ativo);
-  };
-
-  const getApplicationsByOrganization = (orgId: string): OrganizationApplication[] => {
-    return applications.filter(app => app.organizacaoId === orgId);
-  };
-
-  const refreshOrganizations = async (): Promise<void> => {
-    await fetchOrganizations();
-  };
-
-  const refreshApplications = async (): Promise<void> => {
-    await fetchApplications();
   };
 
   return (
-    <OrganizationContext.Provider
+    <AuthContext.Provider
       value={{
-        organizations,
-        applications,
+        isLoggedIn,
+        user,
         loading,
-        loadingApplications,
-        addOrganization,
-        updateOrganization,
-        deleteOrganization,
-        addApplication,
-        updateApplicationStatus,
-        getOrganizationBySlug,
-        getApplicationsByOrganization,
-        refreshOrganizations,
-        refreshApplications
+        login,
+        logout,
+        register,
+        hasRole,
+        isAdmin,
+        isModerator,
+        updateUser
       }}
     >
       {children}
-    </OrganizationContext.Provider>
+    </AuthContext.Provider>
   );
 };

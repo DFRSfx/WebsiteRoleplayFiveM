@@ -21,8 +21,8 @@ import {
     AlertCircle,
     Loader2
 } from 'lucide-react';
-import { useAuth, api } from '../contexts/AuthContext';
-import { useOrganizations } from '../contexts/OrganizationContext';
+import { useAuth, api } from '../../contexts/AuthContext';
+import { useOrganizations } from '../../contexts/OrganizationContext';
 
 interface User {
     id: string;
@@ -55,6 +55,7 @@ const AdminUserManagement: React.FC = () => {
     const [searchTerm, setSearchTerm] = useState('');
     const [roleFilter, setRoleFilter] = useState('all');
     const [showPassword, setShowPassword] = useState(false);
+    const [isSubmitting, setIsSubmitting] = useState(false);
 
     const { register, handleSubmit, formState: { errors }, reset, watch } = useForm<CreateUserFormData>();
 
@@ -99,6 +100,7 @@ const AdminUserManagement: React.FC = () => {
 
     // Criar utilizador
     const handleCreateUser = async (data: CreateUserFormData) => {
+        setIsSubmitting(true);
         try {
             const response = await api.post('/api/admin/users', {
                 ...data,
@@ -113,6 +115,8 @@ const AdminUserManagement: React.FC = () => {
         } catch (error: any) {
             console.error('Erro ao criar utilizador:', error);
             alert(error.response?.data?.error || 'Erro ao criar utilizador');
+        } finally {
+            setIsSubmitting(false);
         }
     };
 
@@ -120,11 +124,22 @@ const AdminUserManagement: React.FC = () => {
     const handleEditUser = async (data: CreateUserFormData) => {
         if (!selectedUser) return;
 
+        setIsSubmitting(true);
         try {
-            const response = await api.patch(`/api/admin/users/${selectedUser.id}`, {
-                ...data,
+            const updateData: any = {
+                username: data.username,
+                email: data.email,
+                role: data.role,
+                active: data.active,
                 organizationId: data.role === 'chefe_organizacao' ? data.organizationId : null
-            });
+            };
+
+            // Só incluir password se foi fornecida
+            if (data.password && data.password.trim()) {
+                updateData.password = data.password;
+            }
+
+            const response = await api.patch(`/api/admin/users/${selectedUser.id}`, updateData);
 
             if (response.data.success) {
                 await fetchUsers();
@@ -135,6 +150,8 @@ const AdminUserManagement: React.FC = () => {
         } catch (error: any) {
             console.error('Erro ao editar utilizador:', error);
             alert(error.response?.data?.error || 'Erro ao editar utilizador');
+        } finally {
+            setIsSubmitting(false);
         }
     };
 
@@ -395,8 +412,8 @@ const AdminUserManagement: React.FC = () => {
                                             </td>
                                             <td className="px-6 py-4">
                                                 <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${user.active
-                                                        ? 'bg-green-900 text-green-300'
-                                                        : 'bg-red-900 text-red-300'
+                                                    ? 'bg-green-900 text-green-300'
+                                                    : 'bg-red-900 text-red-300'
                                                     }`}>
                                                     {user.active ? (
                                                         <>
@@ -427,8 +444,8 @@ const AdminUserManagement: React.FC = () => {
                                                     <button
                                                         onClick={() => toggleUserStatus(user.id, user.active)}
                                                         className={`transition-colors ${user.active
-                                                                ? 'text-red-400 hover:text-red-300'
-                                                                : 'text-green-400 hover:text-green-300'
+                                                            ? 'text-red-400 hover:text-red-300'
+                                                            : 'text-green-400 hover:text-green-300'
                                                             }`}
                                                         title={user.active ? 'Desativar' : 'Ativar'}
                                                     >
@@ -469,6 +486,7 @@ const AdminUserManagement: React.FC = () => {
                         showPassword={showPassword}
                         setShowPassword={setShowPassword}
                         selectedRole={selectedRole}
+                        isSubmitting={isSubmitting}
                     />
                 )}
             </AnimatePresence>
@@ -491,6 +509,7 @@ const AdminUserManagement: React.FC = () => {
                         showPassword={showPassword}
                         setShowPassword={setShowPassword}
                         selectedRole={selectedRole}
+                        isSubmitting={isSubmitting}
                     />
                 )}
             </AnimatePresence>
@@ -508,7 +527,8 @@ const CreateUserModal: React.FC<any> = ({
     errors,
     showPassword,
     setShowPassword,
-    selectedRole
+    selectedRole,
+    isSubmitting
 }) => {
     return (
         <>
@@ -645,8 +665,19 @@ const CreateUserModal: React.FC<any> = ({
                             <button type="button" onClick={onClose} className="btn btn-secondary">
                                 Cancelar
                             </button>
-                            <button type="submit" className="btn btn-primary">
-                                Criar Utilizador
+                            <button
+                                type="submit"
+                                disabled={isSubmitting}
+                                className={`btn btn-primary ${isSubmitting ? 'opacity-70 cursor-not-allowed' : ''}`}
+                            >
+                                {isSubmitting ? (
+                                    <>
+                                        <Loader2 className="animate-spin h-4 w-4 mr-2" />
+                                        A criar...
+                                    </>
+                                ) : (
+                                    'Criar Utilizador'
+                                )}
                             </button>
                         </div>
                     </form>
@@ -667,7 +698,8 @@ const EditUserModal: React.FC<any> = ({
     errors,
     showPassword,
     setShowPassword,
-    selectedRole
+    selectedRole,
+    isSubmitting
 }) => {
     return (
         <>
@@ -734,4 +766,170 @@ const EditUserModal: React.FC<any> = ({
                                     type="button"
                                     onClick={() => setShowPassword(!showPassword)}
                                     className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-white"
-                                ></button>
+                                >
+                                    {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                                </button>
+                            </div>
+                            {errors.password && (
+                                <p className="text-red-500 text-sm mt-1">{errors.password.message}</p>
+                            )}
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <label className="block text-white mb-2">Role *</label>
+                                <select
+                                    className="input"
+                                    defaultValue={user.role}
+                                    {...register("role", { required: "Role é obrigatório" })}
+                                >
+                                    <option value="user">Utilizador</option>
+                                    <option value="chefe_organizacao">Chefe de Organização</option>
+                                    <option value="moderator">Moderador</option>
+                                    <option value="admin">Administrador</option>
+                                </select>
+                                {errors.role && (
+                                    <p className="text-red-500 text-sm mt-1">{errors.role.message}</p>
+                                )}
+                            </div>
+
+                            {selectedRole === 'chefe_organizacao' && (
+                                <div>
+                                    <label className="block text-white mb-2">Organização *</label>
+                                    <select
+                                        className="input"
+                                        defaultValue={user.organizationId}
+                                        {...register("organizationId", {
+                                            required: selectedRole === 'chefe_organizacao' ? "Organização é obrigatória" : false
+                                        })}
+                                    >
+                                        <option value="">Selecionar organização</option>
+                                        {organizations.map((org: any) => (
+                                            <option key={org.id} value={org.id}>{org.nome}</option>
+                                        ))}
+                                    </select>
+                                    {errors.organizationId && (
+                                        <p className="text-red-500 text-sm mt-1">{errors.organizationId.message}</p>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="flex items-center">
+                            <input
+                                type="checkbox"
+                                id="active"
+                                defaultChecked={user.active}
+                                className="h-4 w-4 text-red-600 focus:ring-red-500 border-gray-300 rounded"
+                                {...register("active")}
+                            />
+                            <label htmlFor="active" className="ml-2 text-white">
+                                Conta ativa
+                            </label>
+                        </div>
+
+                        <div className="flex justify-end space-x-2 pt-4">
+                            <button type="button" onClick={onClose} className="btn btn-secondary">
+                                Cancelar
+                            </button>
+                            <button
+                                type="submit"
+                                disabled={isSubmitting}
+                                className={`btn btn-primary ${isSubmitting ? 'opacity-70 cursor-not-allowed' : ''}`}
+                            >
+                                {isSubmitting ? (
+                                    <>
+                                        <Loader2 className="animate-spin h-4 w-4 mr-2" />
+                                        A guardar...
+                                    </>
+                                ) : (
+                                    'Guardar Alterações'
+                                )}
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </>
+    );
+};
+
+// Modal para detalhes da candidatura (usado no AdminDashboard)
+const ApplicationDetailModal: React.FC<{
+    application: any;
+    organization: any;
+    onClose: () => void;
+    onStatusChange: (status: string, notas?: string) => void;
+}> = ({ application, organization, onClose, onStatusChange }) => {
+    const [newStatus, setNewStatus] = useState(application.estado);
+    const [notas, setNotas] = useState(application.notasAdmin || '');
+
+    const handleSubmit = () => {
+        onStatusChange(newStatus, notas);
+    };
+
+    return (
+        <>
+            <div className="modal-backdrop" onClick={onClose}></div>
+            <div className="modal-content max-w-4xl max-h-[90vh] overflow-y-auto">
+                <div className="p-6">
+                    <div className="flex justify-between items-center mb-6">
+                        <h2 className="text-xl font-bold text-white">
+                            Detalhes da Candidatura
+                        </h2>
+                        <button onClick={onClose} className="text-gray-400 hover:text-white">
+                            ✕
+                        </button>
+                    </div>
+
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        {/* Informações do Candidato */}
+                        <div className="space-y-4">
+                            <h3 className="text-lg font-semibold text-white mb-4">
+                                Informações do Candidato
+                            </h3>
+
+                            <div className="bg-gray-700 p-4 rounded-lg space-y-3">
+                                <div>
+                                    <label className="text-gray-400 text-sm">Nome do Personagem</label>
+                                    <p className="text-white font-medium">{application.nomePersonagem}</p>
+                                </div>
+
+                                <div>
+                                    <label className="text-gray-400 text-sm">Nome do Jogador (OOC)</label>
+                                    <p className="text-white">{application.nomeJogador}</p>
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div>
+                                        <label className="text-gray-400 text-sm">Idade do Personagem</label>
+                                        <p className="text-white">{application.idadePersonagem} anos</p>
+                                    </div>
+                                    <div>
+                                        <label className="text-gray-400 text-sm">Horas Jogadas</label>
+                                        <p className="text-white">{application.horasJogadas}h</p>
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label className="text-gray-400 text-sm">Email</label>
+                                    <p className="text-white flex items-center">
+                                        <Mail className="h-4 w-4 mr-1" />
+                                        {application.email}
+                                    </p>
+                                </div>
+
+                                <div>
+                                    <label className="text-gray-400 text-sm">Discord</label>
+                                    <p className="text-white">{application.discordUsername}</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Motivação e Experiência */}
+                        <div className="space-y-4">
+                            <h3 className="text-lg font-semibold text-white mb-4">
+                                Motivação e Experiência
+                            </h3>
+
+                            <div className="bg-gray-700 p-4 rounded-lg
